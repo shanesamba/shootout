@@ -116,14 +116,16 @@ function dispPlay(){
 
 /* ---------- Admin ---------- */
 async function adminList(){
- const{data:P}=await db.from('participants').select('*');
+ let{data:P}=await db.from('participants').select('*');
+ const pre=ST.category=='free_throw'?'FT':'TP';
+ P=P.filter(p=>p.code.toUpperCase().startsWith(pre));
  const{data:D}=await db.from('attempts').select('code').eq('category',ST.category).eq('status','finished');
  const done=new Set((D||[]).map(x=>x.code));
  P.sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
  app.innerHTML=`<div class=c><div class=row><input id=ti value="${esc(ST.title)}"><select id=cat><option value=free_throw>ลูกโทษ</option><option value=three_point>3 แต้ม</option></select></div>
  <div class=row><input id=nc placeholder="รหัส"><input id=nn placeholder="ชื่อ"><button id=add class=b>+ เพิ่ม</button></div>
  <table><tr><th>รหัส<th>ชื่อ<th><th>สถานะ</tr>${P.map(p=>`<tr><td>${esc(p.code)}<td>${esc(p.name)}<td><button class=b data-c="${esc(p.code)}">เข้าสู่การแข่งขัน</button><td>${done.has(p.code)?'Done':'-'}</tr>`).join('')}</table></div>`;
- $('#cat').value=ST.category;
+ $('#cat').value=ST.category;$('#nc').value=pre;
  $('#ti').onchange=e=>setST({title:e.target.value});
  $('#cat').onchange=async e=>{await setST({category:e.target.value});adminList()};
  $('#add').onclick=async()=>{const code=$('#nc').value.trim(),name=$('#nn').value.trim();if(!code||!name)return;
