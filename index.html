@@ -34,11 +34,13 @@ table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px so
 .r tr{opacity:0}.split .r tr{animation:in .5s both;animation-delay:calc(var(--i)*80ms + 500ms)}
 @keyframes in{from{opacity:0;transform:translateX(30px)}to{opacity:1}}
 tr.me td{background:#27416a;font-weight:700}
+.top13{justify-content:flex-start}
+.tb{width:min(900px,95vw);text-align:left;font-size:clamp(1rem,2vw,1.6rem)}
 .home{position:fixed;top:10px;right:10px;background:none;border:0;cursor:pointer;z-index:9}
 @media(prefers-reduced-motion:reduce){.sum{transition:none}.split .r tr{animation:none;opacity:1}}
 </style></head><body><div id="app"></div>
 <script>
-const SB_URL='https://dcoodoqgwksawooumkyj.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjb29kb3Fnd2tzYXdvb3Vta3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5ODQ5OTksImV4cCI6MjEwODU2MDk5OX0.WvpU-w8KvvELZWeM9k0ui2fIrpJVPDSanWQWliLmcUc';
+const SB_URL=''https://dcoodoqgwksawooumkyj.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjb29kb3Fnd2tzYXdvb3Vta3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5ODQ5OTksImV4cCI6MjEwODU2MDk5OX0.WvpU-w8KvvELZWeM9k0ui2fIrpJVPDSanWQWliLmcUc';
 const db=supabase.createClient(SB_URL,SB_KEY);
 const $=s=>document.querySelector(s),app=$('#app');
 const m=location.hash.match(/^#\/(admin|display)(\d+)$/);
@@ -51,6 +53,7 @@ const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
 const CAT={free_throw:'ลูกโทษ',three_point:'3 แต้ม'};
 const left=()=>!AT?0:AT.status=='running'?Math.max(0,Math.ceil((new Date(AT.end_time)-Date.now())/1000)):AT.status=='finished'?0:AT.duration_sec;
 
+addEventListener('hashchange',()=>location.reload());
 if(!m){app.innerHTML='<div class=c><h2>เปิดด้วย #/admin1 หรือ #/display1</h2></div>'}
 else if(sessionStorage['pin'+m[1]+sid]==='1')start();else gate();
 
@@ -59,7 +62,7 @@ function gate(){
  <div class=row><input id=pin type=tel inputmode=numeric maxlength=6 autocomplete=off autofocus placeholder="PIN 6 หลัก"><button id=go class=b>เข้าสู่ระบบ</button></div><p id=err class=err></p></div>`;
  const go=async()=>{const{data}=await db.rpc('check_pin',{sid,p:$('#pin').value});
   if(data){sessionStorage['pin'+m[1]+sid]='1';start()}else $('#err').textContent='PIN ไม่ถูกต้อง'};
-$('#go').onclick=go;$('#pin').onkeydown=e=>{if(e.key=='Enter')go()};
+ $('#go').onclick=go;$('#pin').onkeydown=e=>{if(e.key=='Enter')go()};
 }
 
 async function loadAT(){AT=ST.attempt_id?(await db.from('attempts').select('*').eq('id',ST.attempt_id).single()).data:null}
@@ -70,7 +73,8 @@ async function start(){
   .on('postgres_changes',{event:'*',schema:'public',table:'stations',filter:'id=eq.'+sid},async p=>{
     ST=p.new;if(!A||!AT||AT.id!==ST.attempt_id)await loadAT();else if(!ST.attempt_id)AT=null;render()})
   .on('postgres_changes',{event:'*',schema:'public',table:'attempts'},p=>{
-    const n=p.new;if(A||!n||n.id!==ST.attempt_id)return;AT=n;render()})
+    const n=p.new;if(A||!n)return;
+    if(n.id===ST.attempt_id){AT=n;render()}else if(ST.screen=='title'&&n.status=='finished')render()})
   .subscribe();
  render();setInterval(tk,200);
  if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});
@@ -86,7 +90,7 @@ function render(){
 function tk(){
  if(!AT||ST.screen!='playing')return;
  const t=$('#time');if(t){t.textContent=fmt(left());t.classList.toggle('warn',AT.status=='running'&&left()<=10)}
- if(A&&AT.status=='running'&&left()<=0)finish();
+ const sm=$('#sm');if(sm)sm.hidden=!(AT.status=='running'&&left()<=0);
 }
 async function finish(){
  AT.status='finished';await setAT({status:'finished',log:AT.log});
@@ -95,7 +99,14 @@ async function finish(){
 function upd(){$('#made').textContent=mk(AT);$('#tot').textContent=tot(AT);$('#pct').textContent=pct(AT)}
 
 /* ---------- Display ---------- */
-function dispTitle(){app.innerHTML=`<div class=big><h1>${esc(ST.title)}</h1><div class=mut>${CAT[ST.category]}</div></div>`}
+let tbHtml='';
+async function dispTitle(){
+ const set=()=>app.innerHTML=`<div class="big top13"><h1>${esc(ST.title)}</h1><div class=mut>${CAT[ST.category]} · 13 อันดับแรก</div><div class=tb>${tbHtml}</div></div>`;
+ set();
+ const L=await board(ST.category);
+ tbHtml=L.length?btable(L.slice(0,13)):'';
+ if(ST.screen=='title')set();
+}
 function dispPlay(){
  app.innerHTML=`<div class=big><div class=mut>รหัส ${esc(AT.code)} · ${CAT[AT.category]}</div><h1>${esc(AT.name)}</h1>
  <div id=time class=time>${fmt(left())}</div>
@@ -106,13 +117,15 @@ function dispPlay(){
 /* ---------- Admin ---------- */
 async function adminList(){
  const{data:P}=await db.from('participants').select('*');
+ const{data:D}=await db.from('attempts').select('code').eq('category',ST.category).eq('status','finished');
+ const done=new Set((D||[]).map(x=>x.code));
  P.sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
  app.innerHTML=`<div class=c><div class=row><input id=ti value="${esc(ST.title)}"><select id=cat><option value=free_throw>ลูกโทษ</option><option value=three_point>3 แต้ม</option></select></div>
  <div class=row><input id=nc placeholder="รหัส"><input id=nn placeholder="ชื่อ"><button id=add class=b>+ เพิ่ม</button></div>
- <table><tr><th>รหัส<th>ชื่อ<th></tr>${P.map(p=>`<tr><td>${esc(p.code)}<td>${esc(p.name)}<td><button class=b data-c="${esc(p.code)}">เข้าสู่การแข่งขัน</button></tr>`).join('')}</table></div>`;
+ <table><tr><th>รหัส<th>ชื่อ<th><th>สถานะ</tr>${P.map(p=>`<tr><td>${esc(p.code)}<td>${esc(p.name)}<td><button class=b data-c="${esc(p.code)}">เข้าสู่การแข่งขัน</button><td>${done.has(p.code)?'Done':'-'}</tr>`).join('')}</table></div>`;
  $('#cat').value=ST.category;
  $('#ti').onchange=e=>setST({title:e.target.value});
- $('#cat').onchange=e=>setST({category:e.target.value});
+ $('#cat').onchange=async e=>{await setST({category:e.target.value});adminList()};
  $('#add').onclick=async()=>{const code=$('#nc').value.trim(),name=$('#nn').value.trim();if(!code||!name)return;
   const{error}=await db.from('participants').insert({code,name});if(error)alert('รหัสนี้มีอยู่แล้ว');adminList()};
  app.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{
@@ -125,25 +138,31 @@ function adminPlay(){
  app.innerHTML=`<div class=pl><div class=top><div>${esc(AT.code)} · ${esc(AT.name)} · ${CAT[AT.category]}</div>
  <div id=time class=time>${fmt(left())}</div>
  <div class=score><span id=made>${mk(AT)}</span> / <span id=tot>${tot(AT)}</span> · <span id=pct>${pct(AT)}</span>%</div></div>
- <div class=row>${r?`<input id=du type=number min=5 value=${AT.duration_sec}> วินาที <button id=st class="b g">เริ่มการแข่งขัน</button>`:`<button id=un class=b>ย้อนล่าสุด</button>`}</div>
+ <div class=row>${r?`<input id=du type=number min=5 value=${AT.duration_sec}> วินาที <button id=st class="b g">เริ่มการแข่งขัน</button>`:`<button id=un class=b>ย้อนล่าสุด</button><button id=sm class="b g" hidden>สรุปผล</button>`}</div>
  <div class=btns><button id=x class=x>ไม่ลง</button><button id=m class=m>ลง</button></div></div>`;
- const shoot=c=>{if(AT.status!='running'||left()<=0)return;setAT({log:AT.log+c});upd()};
+ const shoot=c=>{if(AT.status!='running')return;setAT({log:AT.log+c});upd()};
  $('#m').onpointerdown=()=>shoot('M');$('#x').onpointerdown=()=>shoot('X');
  if(r){
   $('#du').onchange=e=>{const v=Math.max(5,+e.target.value||60);setAT({duration_sec:v});$('#time').textContent=fmt(v);db.from('stations').update({default_sec:v}).eq('id',sid)};
   $('#st').onclick=()=>{setAT({status:'running',end_time:new Date(Date.now()+AT.duration_sec*1000).toISOString()});adminPlay()};
- }else $('#un').onclick=()=>{if(AT.status=='running'&&AT.log){setAT({log:AT.log.slice(0,-1)});upd()}};
+ }else{
+  $('#un').onclick=()=>{if(AT.status=='running'&&AT.log){setAT({log:AT.log.slice(0,-1)});upd()}};
+  $('#sm').onclick=finish;tk();
+ }
 }
 
 /* ---------- Summary (shared) ---------- */
+const cmp=(a,b)=>b.made-a.made||b.p-a.p||a.total-b.total;
+const brow=(r,i,cur)=>`<tr class="${r.code==cur?'me':''}" style="--i:${i}"><td>${r.rank}<td>${esc(r.code)}<td>${esc(r.name)}<td>${r.made}/${r.total}<td>${(r.p*100).toFixed(1)}%</tr>`;
+const btable=(L,cur)=>`<table><tr><th>#<th>รหัส<th>ชื่อ<th>ลง<th>%</tr>${L.map((r,i)=>brow(r,i,cur)).join('')}</table>`;
 async function board(cat){
  const{data}=await db.from('attempts').select('code,name,log').eq('category',cat).eq('status','finished');
  const best={};
  data.forEach(a=>{const made=(a.log.match(/M/g)||[]).length,total=a.log.length;
   const r={code:a.code,name:a.name,made,total,p:total?made/total:0},o=best[a.code];
-  if(!o||r.made>o.made||(r.made==o.made&&r.p>o.p))best[a.code]=r});
- const L=Object.values(best).sort((a,b)=>b.made-a.made||b.p-a.p);
- L.forEach((r,i)=>r.rank=i&&L[i-1].made==r.made&&L[i-1].p==r.p?L[i-1].rank:i+1);
+  if(!o||cmp(r,o)<0)best[a.code]=r});
+ const L=Object.values(best).sort(cmp);
+ L.forEach((r,i)=>r.rank=i&&cmp(L[i-1],r)==0?L[i-1].rank:i+1);
  return L;
 }
 async function sumRender(){
