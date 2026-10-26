@@ -59,7 +59,7 @@ function gate(){
  <div class=row><input id=pin type=tel inputmode=numeric maxlength=6 autocomplete=off autofocus placeholder="PIN 6 หลัก"><button id=go class=b>เข้าสู่ระบบ</button></div><p id=err class=err></p></div>`;
  const go=async()=>{const{data}=await db.rpc('check_pin',{sid,p:$('#pin').value});
   if(data){sessionStorage['pin'+m[1]+sid]='1';start()}else $('#err').textContent='PIN ไม่ถูกต้อง'};
- $('#go').onclick=go;$('#pin').onkeydown=e=>e.key=='Enter'&&go();
+$('#go').onclick=go;$('#pin').onkeydown=e=>{if(e.key=='Enter')go()};
 }
 
 async function loadAT(){AT=ST.attempt_id?(await db.from('attempts').select('*').eq('id',ST.attempt_id).single()).data:null}
