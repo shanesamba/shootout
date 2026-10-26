@@ -56,7 +56,7 @@ else if(sessionStorage['pin'+m[1]+sid]==='1')start();else gate();
 
 function gate(){
  app.innerHTML=`<div class=c><h1>สถานี ${sid}: ${A?'เจ้าหน้าที่':'จอแสดงผล'}</h1>
- <div class=row><input id=pin type=password inputmode=numeric maxlength=6 placeholder="PIN 6 หลัก"><button id=go class=b>เข้าสู่ระบบ</button></div><p id=err class=err></p></div>`;
+ <div class=row><input id=pin type=tel inputmode=numeric maxlength=6 autocomplete=off autofocus placeholder="PIN 6 หลัก"><button id=go class=b>เข้าสู่ระบบ</button></div><p id=err class=err></p></div>`;
  const go=async()=>{const{data}=await db.rpc('check_pin',{sid,p:$('#pin').value});
   if(data){sessionStorage['pin'+m[1]+sid]='1';start()}else $('#err').textContent='PIN ไม่ถูกต้อง'};
  $('#go').onclick=go;$('#pin').onkeydown=e=>e.key=='Enter'&&go();
