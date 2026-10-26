@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shootout</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#0e1a2b;--card:#17263b;--fg:#f4f7fb;--mut:#8da2bd;--blue:#1f7ae0;--red:#d93a3a;--org:#f08a24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,"Noto Sans Thai",sans-serif;touch-action:manipulation}
+#app{min-height:100vh}
+h1{margin:.2em 0;font-size:clamp(2rem,6vw,4.5rem)}h2{margin:.2em 0}
+.c{max-width:760px;margin:auto;padding:16px}
+.row{display:flex;gap:8px;margin:8px 0;align-items:center;flex-wrap:wrap}
+input,select{padding:12px;border-radius:8px;border:1px solid #2c4262;background:var(--card);color:var(--fg);font-size:1rem;flex:1;min-width:0}
+.b{padding:12px 16px;border:0;border-radius:8px;background:var(--blue);color:#fff;font-size:1rem;cursor:pointer}
+.b.g{background:#1d9e5c}
+table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #243a57;text-align:left}
+.mut{color:var(--mut)}.err{color:#ff8a8a}
+.pl{display:flex;flex-direction:column;height:100vh;padding:12px}
+.top{text-align:center}.time{font-size:3.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+.time.warn{color:#ff6b6b}.score{font-size:1.6rem}
+.btns{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.btns button{border:0;border-radius:16px;font-size:clamp(2rem,8vw,5rem);font-weight:700;color:#fff;touch-action:manipulation}
+.m{background:var(--blue)}.x{background:var(--red)}
+.big{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
+.big .time{font-size:clamp(4rem,14vw,10rem)}.big .score{font-size:clamp(3rem,10vw,7rem);font-weight:700}
+.big .pct{font-size:clamp(2rem,6vw,4rem);color:var(--org)}
+.sum{display:grid;grid-template-columns:1fr 0fr;min-height:100vh;transition:grid-template-columns .9s ease}
+.sum.split{grid-template-columns:1fr 1fr}
+.l{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px}
+.huge{font-size:clamp(5rem,16vw,12rem);font-weight:800;line-height:1;color:var(--blue)}
+.rank{font-size:clamp(2rem,6vw,4rem);color:var(--org);font-weight:700}
+.r{overflow:hidden;min-width:0;padding:0}.r>div{padding:24px;min-width:420px}
+.r tr{opacity:0}.split .r tr{animation:in .5s both;animation-delay:calc(var(--i)*80ms + 500ms)}
+@keyframes in{from{opacity:0;transform:translateX(30px)}to{opacity:1}}
+tr.me td{background:#27416a;font-weight:700}
+.home{position:fixed;top:10px;right:10px;background:none;border:0;cursor:pointer;z-index:9}
+@media(prefers-reduced-motion:reduce){.sum{transition:none}.split .r tr{animation:none;opacity:1}}
+</style></head><body><div id="app"></div>
+<script>
+const SB_URL='https://dcoodoqgwksawooumkyj.supabase.co/rest/v1/',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjb29kb3Fnd2tzYXdvb3Vta3lqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5ODQ5OTksImV4cCI6MjEwODU2MDk5OX0.WvpU-w8KvvELZWeM9k0ui2fIrpJVPDSanWQWliLmcUc';
+const db=supabase.createClient(SB_URL,SB_KEY);
+const $=s=>document.querySelector(s),app=$('#app');
+const m=location.hash.match(/^#\/(admin|display)(\d+)$/);
+const A=m&&m[1]=='admin',sid=m&&m[2];
+let ST=null,AT=null,q=Promise.resolve();
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mk=a=>(a.log.match(/M/g)||[]).length,tot=a=>a.log.length;
+const pct=a=>tot(a)?(mk(a)/tot(a)*100).toFixed(1):'0.0';
+const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+const CAT={free_throw:'ลูกโทษ',three_point:'3 แต้ม'};
+const left=()=>!AT?0:AT.status=='running'?Math.max(0,Math.ceil((new Date(AT.end_time)-Date.now())/1000)):AT.status=='finished'?0:AT.duration_sec;
+
+if(!m){app.innerHTML='<div class=c><h2>เปิดด้วย #/admin1 หรือ #/display1</h2></div>'}
+else if(sessionStorage['pin'+m[1]+sid]==='1')start();else gate();
+
+function gate(){
+ app.innerHTML=`<div class=c><h1>สถานี ${sid}: ${A?'เจ้าหน้าที่':'จอแสดงผล'}</h1>
+ <div class=row><input id=pin type=password inputmode=numeric maxlength=6 placeholder="PIN 6 หลัก"><button id=go class=b>เข้าสู่ระบบ</button></div><p id=err class=err></p></div>`;
+ const go=async()=>{const{data}=await db.rpc('check_pin',{sid,p:$('#pin').value});
+  if(data){sessionStorage['pin'+m[1]+sid]='1';start()}else $('#err').textContent='PIN ไม่ถูกต้อง'};
+ $('#go').onclick=go;$('#pin').onkeydown=e=>e.key=='Enter'&&go();
+}
+
+async function loadAT(){AT=ST.attempt_id?(await db.from('attempts').select('*').eq('id',ST.attempt_id).single()).data:null}
+async function start(){
+ ST=(await db.from('stations').select('*').eq('id',sid).single()).data;
+ await loadAT();
+ db.channel('st'+sid+m[1])
+  .on('postgres_changes',{event:'*',schema:'public',table:'stations',filter:'id=eq.'+sid},async p=>{
+    ST=p.new;if(!A||!AT||AT.id!==ST.attempt_id)await loadAT();else if(!ST.attempt_id)AT=null;render()})
+  .on('postgres_changes',{event:'*',schema:'public',table:'attempts'},p=>{
+    const n=p.new;if(A||!n||n.id!==ST.attempt_id)return;AT=n;render()})
+  .subscribe();
+ render();setInterval(tk,200);
+ if(navigator.wakeLock)navigator.wakeLock.request('screen').catch(()=>{});
+}
+const setST=o=>{Object.assign(ST,o);return db.from('stations').update(o).eq('id',sid)};
+const setAT=o=>{Object.assign(AT,o);q=q.then(()=>db.from('attempts').update(o).eq('id',AT.id));return q};
+
+function render(){
+ if(ST.screen=='summary'&&AT)return sumRender();
+ if(ST.screen=='playing'&&AT)return A?adminPlay():dispPlay();
+ return A?adminList():dispTitle();
+}
+function tk(){
+ if(!AT||ST.screen!='playing')return;
+ const t=$('#time');if(t){t.textContent=fmt(left());t.classList.toggle('warn',AT.status=='running'&&left()<=10)}
+ if(A&&AT.status=='running'&&left()<=0)finish();
+}
+async function finish(){
+ AT.status='finished';await setAT({status:'finished',log:AT.log});
+ await setST({screen:'summary',show_board:false});render();
+}
+function upd(){$('#made').textContent=mk(AT);$('#tot').textContent=tot(AT);$('#pct').textContent=pct(AT)}
+
+/* ---------- Display ---------- */
+function dispTitle(){app.innerHTML=`<div class=big><h1>${esc(ST.title)}</h1><div class=mut>${CAT[ST.category]}</div></div>`}
+function dispPlay(){
+ app.innerHTML=`<div class=big><div class=mut>รหัส ${esc(AT.code)} · ${CAT[AT.category]}</div><h1>${esc(AT.name)}</h1>
+ <div id=time class=time>${fmt(left())}</div>
+ <div class=score><span id=made>${mk(AT)}</span> / <span id=tot>${tot(AT)}</span></div>
+ <div class=pct><span id=pct>${pct(AT)}</span>%</div></div>`;
+}
+
+/* ---------- Admin ---------- */
+async function adminList(){
+ const{data:P}=await db.from('participants').select('*');
+ P.sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+ app.innerHTML=`<div class=c><div class=row><input id=ti value="${esc(ST.title)}"><select id=cat><option value=free_throw>ลูกโทษ</option><option value=three_point>3 แต้ม</option></select></div>
+ <div class=row><input id=nc placeholder="รหัส"><input id=nn placeholder="ชื่อ"><button id=add class=b>+ เพิ่ม</button></div>
+ <table><tr><th>รหัส<th>ชื่อ<th></tr>${P.map(p=>`<tr><td>${esc(p.code)}<td>${esc(p.name)}<td><button class=b data-c="${esc(p.code)}">เข้าสู่การแข่งขัน</button></tr>`).join('')}</table></div>`;
+ $('#cat').value=ST.category;
+ $('#ti').onchange=e=>setST({title:e.target.value});
+ $('#cat').onchange=e=>setST({category:e.target.value});
+ $('#add').onclick=async()=>{const code=$('#nc').value.trim(),name=$('#nn').value.trim();if(!code||!name)return;
+  const{error}=await db.from('participants').insert({code,name});if(error)alert('รหัสนี้มีอยู่แล้ว');adminList()};
+ app.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{
+  const p=P.find(x=>x.code==b.dataset.c);
+  const{data}=await db.from('attempts').insert({station:sid,code:p.code,name:p.name,category:ST.category,duration_sec:ST.default_sec}).select().single();
+  AT=data;await setST({screen:'playing',attempt_id:data.id,show_board:false});render()});
+}
+function adminPlay(){
+ const r=AT.status=='ready';
+ app.innerHTML=`<div class=pl><div class=top><div>${esc(AT.code)} · ${esc(AT.name)} · ${CAT[AT.category]}</div>
+ <div id=time class=time>${fmt(left())}</div>
+ <div class=score><span id=made>${mk(AT)}</span> / <span id=tot>${tot(AT)}</span> · <span id=pct>${pct(AT)}</span>%</div></div>
+ <div class=row>${r?`<input id=du type=number min=5 value=${AT.duration_sec}> วินาที <button id=st class="b g">เริ่มการแข่งขัน</button>`:`<button id=un class=b>ย้อนล่าสุด</button>`}</div>
+ <div class=btns><button id=x class=x>ไม่ลง</button><button id=m class=m>ลง</button></div></div>`;
+ const shoot=c=>{if(AT.status!='running'||left()<=0)return;setAT({log:AT.log+c});upd()};
+ $('#m').onpointerdown=()=>shoot('M');$('#x').onpointerdown=()=>shoot('X');
+ if(r){
+  $('#du').onchange=e=>{const v=Math.max(5,+e.target.value||60);setAT({duration_sec:v});$('#time').textContent=fmt(v);db.from('stations').update({default_sec:v}).eq('id',sid)};
+  $('#st').onclick=()=>{setAT({status:'running',end_time:new Date(Date.now()+AT.duration_sec*1000).toISOString()});adminPlay()};
+ }else $('#un').onclick=()=>{if(AT.status=='running'&&AT.log){setAT({log:AT.log.slice(0,-1)});upd()}};
+}
+
+/* ---------- Summary (shared) ---------- */
+async function board(cat){
+ const{data}=await db.from('attempts').select('code,name,log').eq('category',cat).eq('status','finished');
+ const best={};
+ data.forEach(a=>{const made=(a.log.match(/M/g)||[]).length,total=a.log.length;
+  const r={code:a.code,name:a.name,made,total,p:total?made/total:0},o=best[a.code];
+  if(!o||r.made>o.made||(r.made==o.made&&r.p>o.p))best[a.code]=r});
+ const L=Object.values(best).sort((a,b)=>b.made-a.made||b.p-a.p);
+ L.forEach((r,i)=>r.rank=i&&L[i-1].made==r.made&&L[i-1].p==r.p?L[i-1].rank:i+1);
+ return L;
+}
+async function sumRender(){
+ let el=$('.sum');
+ if(el){el.classList.toggle('split',!!ST.show_board);return}
+ const L=await board(AT.category),me=L.find(r=>r.code==AT.code);
+ const row=(r,i)=>`<tr class="${r.code==AT.code?'me':''}" style="--i:${i}"><td>${r.rank}<td>${esc(r.code)}<td>${esc(r.name)}<td>${r.made}/${r.total}<td>${(r.p*100).toFixed(1)}%</tr>`;
+ const top=L.slice(0,13);
+ app.innerHTML=`<div class="sum ${ST.show_board?'split':''}">
+ <div class=l><div class=mut>${CAT[AT.category]} · รหัส ${esc(AT.code)}</div><h1>${esc(AT.name)}</h1>
+ <div class=mut>ลูกลง</div><div class=huge>${mk(AT)}</div>
+ <div class=score>${pct(AT)}% (${mk(AT)}/${tot(AT)})</div>
+ <div class=rank>อันดับ ${me?me.rank:'-'}</div></div>
+ <div class=r><div><h2>13 อันดับแรก: ${CAT[AT.category]}</h2><table><tr><th>#<th>รหัส<th>ชื่อ<th>ลง<th>%</tr>
+ ${top.map(row).join('')}${me&&!top.includes(me)?row(me,13):''}</table></div></div>
+ ${A?`<button class=home id=home title="กลับหน้าเลือกผู้เข้าแข่งขัน"><svg viewBox="0 0 64 64" width=60 height=60><path d="M12 24C6 14 12 6 20 3c-3 7 0 11 5 13zM52 24c6-10 0-18-8-21 3 7 0 11-5 13z" fill="#f4f7fb"/><circle cx=32 cy=37 r=22 fill="#f08a24"/><path d="M10 37h44M32 15v44M17 21c8 8 8 24 0 32M47 21c-8 8-8 24 0 32" stroke="#222" stroke-width=2 fill=none /></svg></button>`:''}</div>`;
+ if(A){
+  $('.sum').onclick=()=>setST({show_board:!ST.show_board}).then(()=>$('.sum').classList.toggle('split',ST.show_board));
+  $('#home').onclick=async e=>{e.stopPropagation();AT=null;await setST({screen:'title',attempt_id:null,show_board:false});render()};
+ }
+}
+</script></body></html>
